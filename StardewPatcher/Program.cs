@@ -120,21 +120,36 @@ namespace StardewPatcher
     }
     class Program
     {
+        const string Version = "1.0.0";
         const string PatchedBy = "PatchedBy";
-        const string PatcherVer = "SDVPatcher 1.0.0";
+        const string PatcherVer = "SDVPatcher "+Version;
         static void Main(string[] args)
         {
+            Console.WindowWidth = 100;
+            Console.WriteLine(new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("StardewPatcher.logo.txt") ?? throw new NullReferenceException("Unable to render logo!")).ReadToEnd() + "V " + Version);
+            Console.WriteLine("\n\nThis program will patch your Stardew Valley to enable advanced modding functionality.");
+            Console.WriteLine("A copy of the vanilla stardew valley exe will be created in the process so that no damage can occur.\n");
+            Console.WriteLine("Press Y to continue, press any other key to exit.");
+            if (Console.ReadKey().Key != ConsoleKey.Y)
+                return;
+            Console.WriteLine("\nAttempting to patch stardew valley...");
             // Memory var to check if we failed patching at any point
             var failed = false;
             Console.ForegroundColor = ConsoleColor.Red;
-            var copy = Path.Combine(Path.GetDirectoryName(args[0]), Path.GetFileNameWithoutExtension(args[0]) + "_original.exe");
-            if (!File.Exists(args[0]) && !File.Exists(copy))
+            args = new[] { "Stardew Valley.exe" };
+            string file;
+            if (File.Exists("Stardew Valley.exe"))
+                file = "Stardew Valley";
+            else if (File.Exists("StardewValley.exe"))
+                file = "StardewValley";
+            else
             {
-                Console.WriteLine("Unable to apply patch, exe file does not exist, press any key to exit.");
+                Console.WriteLine("\n"+Environment.NewLine+"Unable to patch, stardew exe could not be found."+Environment.NewLine+"Press any key to exit.");
                 Console.ForegroundColor = ConsoleColor.White;
                 Console.ReadKey();
                 return;
             }
+            var copy = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location), file + "_original.exe");
             // Make sure we are using the vanilla SDV as our source
             if (File.Exists(copy))
                 File.Delete(args[0]);
@@ -190,16 +205,13 @@ namespace StardewPatcher
                     patcher.Patch("StardewValley.Characters.Pet")
                         .VirtualMethod("setAtFarmPosition")
                         ;
-                    patcher.Patch("StardewValley.AnimalHouse")
-                        .Method("updateWhenNotCurrentLocation", @callback: true)
-                        ;
                     // Save assembly to disk
                     assembly.Write(args[0]);
                 }
                 catch(Exception err)
                 {
                     failed = true;
-                    Console.WriteLine("Error encountered during the patching process.\n"+err.ToString());
+                    Console.WriteLine("\n"+Environment.NewLine+"Error encountered during the patching process.\n"+err.ToString());
                 }
             }
             // Check if editing the assembly worked
@@ -212,16 +224,17 @@ namespace StardewPatcher
             if (failed)
             {
                 // If we failed, we restore the vanilla exe
-                Console.WriteLine("Patching failed, restoring vanilla Stardew Valley...");
                 File.Delete(args[0]);
                 File.Move(copy, args[0]);
+                Console.WriteLine("\n"+Environment.NewLine+"Patching failed, vanilla exe has been restored"+Environment.NewLine+"Press any key to exit.");
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("Stardew Valley has been patched successfully!");
+                Console.WriteLine("\n"+Environment.NewLine+"Patching complete, stardew exe has been modified."+Environment.NewLine+"Press any key to exit.");
             }
             Console.ForegroundColor = ConsoleColor.White;
+            Console.ReadKey();
         }
     }
 }
