@@ -1,123 +1,12 @@
-﻿using Mono.Cecil;
-using Mono.Cecil.Cil;
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using CecilFieldAttributes = Mono.Cecil.FieldAttributes;
+
+using Mono.Cecil;
 
 namespace StardewPatcher
 {
-    class ModulePatcher
-    {
-        private ModuleDefinition Module;
-        public ModulePatcher(ModuleDefinition module)
-        {
-            Module = module;
-        }
-        public TypePatcher Patch(string type)
-        {
-            return new TypePatcher(Module.GetType(type));
-        }
-        public void PatchConstants()
-        {
-            foreach (var type in Module.Types.Where(a => a.HasFields && a.Fields.Any(b => b.IsLiteral)))
-            {
-                foreach (var field in type.Fields.Where(a => a.IsLiteral))
-                {
-                    field.IsLiteral = false;
-                    field.IsStatic = true;
-                    field.IsInitOnly = true;
-                }
-            }
-        }
-    }
-    class TypePatcher
-    {
-        private TypeDefinition Type;
-        public TypePatcher(TypeDefinition type)
-        {
-            Type = type;
-        }
-        private void ILInjector(MethodDefinition def, Instruction[] instructions, bool before=true)
-        {
-            Console.ForegroundColor = ConsoleColor.Gray;
-            var processor = def.Body.GetILProcessor();
-            for (var c = 0; c < instructions.Length; c++)
-            {
-                Console.WriteLine("Instruction "+c+":" + instructions[c].ToString());
-                processor.InsertBefore(def.Body.Instructions[c], instructions[c]);
-            }
-            Console.ForegroundColor = ConsoleColor.Red;
-        }
-        public TypePatcher Method(string @method,  bool @virtual=false, bool @public=false, bool @callback=false)
-        {
-            foreach (var def in Type.Methods.Where(a => a.Name.Equals(@method)))
-            {
-                if (@virtual)
-                {
-                    def.IsVirtual = true;
-                    def.IsNewSlot = true;
-                }
-                if (@public)
-                {
-                    def.IsPublic = true;
-                }
-                if (@callback)
-                {
-                    // Current IL only works properly if no return is expected, so we check for a void return
-                    if (def.ReturnType == Type.Module.ImportReference(typeof(void)))
-                    {
-                        var fld = new FieldDefinition(@method + "_OnFired", def.IsStatic ? (CecilFieldAttributes.Public | CecilFieldAttributes.Static) : CecilFieldAttributes.Public, Type.Module.ImportReference(typeof(Func<bool>)));
-                        Type.Fields.Add(fld);
-                        var milp = def.Body.GetILProcessor();
-                        ILInjector(def, new[] {
-                        def.IsStatic ? Instruction.Create(OpCodes.Ldobj, Type) : Instruction.Create(OpCodes.Ldarg_0),
-                        Instruction.Create(OpCodes.Ldfld,fld),
-                        Instruction.Create(OpCodes.Brfalse, def.Body.Instructions[0]),
-                        def.IsStatic ? Instruction.Create(OpCodes.Ldobj, Type) : Instruction.Create(OpCodes.Ldarg_0),
-                        Instruction.Create(OpCodes.Ldfld,fld),
-                        Instruction.Create(OpCodes.Callvirt, Type.Module.ImportReference(typeof(Func<bool>).GetMethod("Invoke"))),
-                    });
-                        milp.InsertBefore(def.Body.Instructions[6], Instruction.Create(OpCodes.Brtrue, def.Body.Instructions[def.Body.Instructions.Count - 1]));
-                    }
-                }
-            }
-            return this;
-        }
-        public TypePatcher Property(string @property, bool @virtual=false, bool @public=false)
-        {
-            foreach (var def in Type.Properties.Where(a => a.Name.Equals(@property)))
-            {
-                if (@virtual)
-                {
-                    def.GetMethod.IsVirtual = true;
-                    def.GetMethod.IsNewSlot = true;
-                    def.SetMethod.IsVirtual = true;
-                    def.SetMethod.IsNewSlot = true;
-                }
-                if (@public)
-                {
-                    def.GetMethod.IsPublic = true;
-                    def.SetMethod.IsPublic = true;
-                }
-            }
-            return this;
-        }
-        public TypePatcher Field(string @field, bool @public=false)
-        {
-            foreach (var def in Type.Fields.Where(a => a.Name.Equals(@field)))
-            {
-                if(@public)
-                    def.IsPublic = true;
-            }
-            return this;
-        }
-        public TypePatcher VirtualMethod(string @method)
-        {
-            return Method(method, @virtual: true);
-        }
-    }
     class Program
     {
         const string Version = "1.0.0";
@@ -149,12 +38,13 @@ namespace StardewPatcher
                 Console.ReadKey();
                 return;
             }
+            var path = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location), file + ".exe");
             var copy = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location), file + "_original.exe");
             // Make sure we are using the vanilla SDV as our source
             if (File.Exists(copy))
-                File.Delete(args[0]);
+                File.Delete(path);
             else
-                File.Move(args[0], copy);
+                File.Move(path, copy);
             // open the assembly
             using (var assembly = AssemblyDefinition.ReadAssembly(copy))
             {
@@ -206,7 +96,7 @@ namespace StardewPatcher
                         .VirtualMethod("setAtFarmPosition")
                         ;
                     // Save assembly to disk
-                    assembly.Write(args[0]);
+                    assembly.Write(path);
                 }
                 catch(Exception err)
                 {
@@ -214,9 +104,9 @@ namespace StardewPatcher
                     Console.WriteLine("\n"+Environment.NewLine+"Error encountered during the patching process.\n"+err.ToString());
                 }
             }
-            // Check if editing the assembly worked
+            // Check if editing the assembly went as designed (Just in case something unexpected got messed up)
             if(!failed)
-                using (var assembly = AssemblyDefinition.ReadAssembly(args[0]))
+                using (var assembly = AssemblyDefinition.ReadAssembly(path))
                 {
                     if (!assembly.CustomAttributes.Any(a => a.AttributeType.Name.Equals("AssemblyMetadataAttribute") && a.ConstructorArguments[0].Value.Equals(PatchedBy) && a.ConstructorArguments[1].Value.Equals(PatcherVer)))
                         failed = true;
@@ -224,8 +114,8 @@ namespace StardewPatcher
             if (failed)
             {
                 // If we failed, we restore the vanilla exe
-                File.Delete(args[0]);
-                File.Move(copy, args[0]);
+                File.Delete(path);
+                File.Move(copy, path);
                 Console.WriteLine("\n"+Environment.NewLine+"Patching failed, vanilla exe has been restored"+Environment.NewLine+"Press any key to exit.");
             }
             else
