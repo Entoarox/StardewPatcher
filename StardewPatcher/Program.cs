@@ -46,14 +46,13 @@ namespace StardewPatcher
             else
                 File.Move(path, copy);
             // open the assembly
-            using (var assembly = AssemblyDefinition.ReadAssembly(copy))
-            {
+            var assembly = AssemblyDefinition.ReadAssembly(copy);
                 try
                 {
                     // Add the custom attribute to the assembly so that SMAPI can check for it
-                    var attribute = new CustomAttribute(assembly.MainModule.ImportReference(typeof(AssemblyMetadataAttribute).GetConstructor(new Type[] { typeof(string), typeof(string) })));
-                    attribute.ConstructorArguments.Add(new CustomAttributeArgument(assembly.MainModule.ImportReference(typeof(string)), PatchedBy));
-                    attribute.ConstructorArguments.Add(new CustomAttributeArgument(assembly.MainModule.ImportReference(typeof(string)), PatcherVer));
+                    var attribute = new CustomAttribute(assembly.MainModule.Import(typeof(AssemblyMetadataAttribute).GetConstructor(new Type[] { typeof(string), typeof(string) })));
+                    attribute.ConstructorArguments.Add(new CustomAttributeArgument(assembly.MainModule.Import(typeof(string)), PatchedBy));
+                    attribute.ConstructorArguments.Add(new CustomAttributeArgument(assembly.MainModule.Import(typeof(string)), PatcherVer));
                     assembly.CustomAttributes.Add(attribute);
                     // Get the patch wrapper utility
                     var patcher = new ModulePatcher(assembly.MainModule);
@@ -103,14 +102,14 @@ namespace StardewPatcher
                     failed = true;
                     Console.WriteLine("\n"+Environment.NewLine+"Error encountered during the patching process.\n"+err.ToString());
                 }
-            }
+            assembly = null;
             // Check if editing the assembly went as designed (Just in case something unexpected got messed up)
-            if(!failed)
-                using (var assembly = AssemblyDefinition.ReadAssembly(path))
-                {
-                    if (!assembly.CustomAttributes.Any(a => a.AttributeType.Name.Equals("AssemblyMetadataAttribute") && a.ConstructorArguments[0].Value.Equals(PatchedBy) && a.ConstructorArguments[1].Value.Equals(PatcherVer)))
-                        failed = true;
-                }
+            if (!failed)
+            {
+                assembly = AssemblyDefinition.ReadAssembly(path);
+                if (!assembly.CustomAttributes.Any(a => a.AttributeType.Name.Equals("AssemblyMetadataAttribute") && a.ConstructorArguments[0].Value.Equals(PatchedBy) && a.ConstructorArguments[1].Value.Equals(PatcherVer)))
+                    failed = true;
+            }
             if (failed)
             {
                 // If we failed, we restore the vanilla exe

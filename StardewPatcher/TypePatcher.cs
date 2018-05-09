@@ -41,9 +41,9 @@ namespace StardewPatcher
                 if (@callback)
                 {
                     // Current IL only works properly if no return is expected, so we check for a void return
-                    if (def.ReturnType == Type.Module.ImportReference(typeof(void)))
+                    if (def.ReturnType == Type.Module.Import(typeof(void)))
                     {
-                        var fld = new FieldDefinition(@method + "_OnFired", def.IsStatic ? (CecilFieldAttributes.Public | CecilFieldAttributes.Static) : CecilFieldAttributes.Public, Type.Module.ImportReference(typeof(Func<bool>)));
+                        var fld = new FieldDefinition(@method + "_OnFired", def.IsStatic ? (CecilFieldAttributes.Public | CecilFieldAttributes.Static) : CecilFieldAttributes.Public, Type.Module.Import(typeof(Func<bool>)));
                         Type.Fields.Add(fld);
                         var milp = def.Body.GetILProcessor();
                         ILInjector(def, new[] {
@@ -52,7 +52,7 @@ namespace StardewPatcher
                         Instruction.Create(OpCodes.Brfalse, def.Body.Instructions[0]),
                         def.IsStatic ? Instruction.Create(OpCodes.Ldobj, Type) : Instruction.Create(OpCodes.Ldarg_0),
                         Instruction.Create(OpCodes.Ldfld,fld),
-                        Instruction.Create(OpCodes.Callvirt, Type.Module.ImportReference(typeof(Func<bool>).GetMethod("Invoke"))),
+                        Instruction.Create(OpCodes.Callvirt, Type.Module.Import(typeof(Func<bool>).GetMethod("Invoke"))),
                     });
                         milp.InsertBefore(def.Body.Instructions[6], Instruction.Create(OpCodes.Brtrue, def.Body.Instructions[def.Body.Instructions.Count - 1]));
                     }
